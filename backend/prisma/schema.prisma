@@ -12,7 +12,7 @@ enum UserRole {
   ADMIN
   DOCTOR
   NURSE
-  STAFF
+  RECEPTIONIST
   PATIENT
 }
 
@@ -25,4 +25,61 @@ model User {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  patientProfile         PatientProfile? @relation("PatientOwner")
+  patientAccesses        PatientAccess[] @relation("PatientAccessSubject")
+  grantedPatientAccesses PatientAccess[] @relation("PatientAccessGrantor")
+  revokedTokens          RevokedToken[]
+  auditLogs              AuditLog[]
+}
+
+model PatientProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  createdAt DateTime @default(now())
+
+  user         User            @relation("PatientOwner", fields: [userId], references: [id], onDelete: Cascade)
+  accessGrants PatientAccess[]
+}
+
+model PatientAccess {
+  id          String   @id @default(uuid()) @db.Uuid
+  patientId   String   @db.Uuid
+  userId      String   @db.Uuid
+  grantedById String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  user      User           @relation("PatientAccessSubject", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User           @relation("PatientAccessGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
+
+  @@unique([patientId, userId])
+  @@index([userId])
+}
+
+model RevokedToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  jti       String   @unique
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
 }
