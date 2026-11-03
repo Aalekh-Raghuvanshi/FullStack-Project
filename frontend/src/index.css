@@ -1,0 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #14243a;
+  --color-muted: #718096;
+  --color-brand: #148f8b;
+  --color-brand-dark: #0f716e;
+  --color-brand-soft: #e8f6f5;
+  --color-canvas: #f6f9fc;
+  --color-line: #e8edf3;
+}
+
+:root {
+  font-family: var(--font-sans);
+  color: #14243a;
+  background: #f6f9fc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+}
+
+* { box-sizing: border-box; }
+body { min-width: 320px; min-height: 100vh; margin: 0; }
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgb(20 143 139 / 32%);
+  outline-offset: 2px;
+}
+::selection { color: #0d4745; background: #ccece9; }
