@@ -3,6 +3,8 @@ const bcrypt = require('bcrypt');
 const AppError = require('../utils/app-error');
 const { getPasswordRounds } = require('../utils/password');
 const { getTokenLifetimeSeconds, signAccessToken } = require('../utils/jwt');
+const { splitPersonName } = require('../utils/person-name');
+const { createRecordNumber } = require('../utils/record-number');
 const { writeAuditLog } = require('./audit.service');
 
 function toPublicUser(user) {
@@ -14,7 +16,7 @@ function toPublicUser(user) {
     isActive: user.isActive,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
-    ...(user.patientProfile ? { patientProfileId: user.patientProfile.id } : {}),
+    ...(user.patient ? { patientProfileId: user.patient.id } : {}),
   };
 }
 
@@ -26,6 +28,7 @@ function createAuthService({ prismaClient, jwtSecret, passwordRounds, tokenLifet
   async function register({ email, password, name }) {
     const normalizedEmail = email.trim().toLowerCase();
     const passwordHash = await bcrypt.hash(password, rounds);
+    const { firstName, lastName } = splitPersonName(name);
 
     try {
       const user = await prismaClient.$transaction(async (transaction) => {
@@ -37,8 +40,14 @@ function createAuthService({ prismaClient, jwtSecret, passwordRounds, tokenLifet
             role: 'PATIENT',
           },
         });
-        const patientProfile = await transaction.patientProfile.create({
-          data: { userId: createdUser.id },
+        const patient = await transaction.patient.create({
+          data: {
+            userId: createdUser.id,
+            patientNumber: createRecordNumber('PAT'),
+            firstName,
+            lastName,
+            email: normalizedEmail,
+          },
         });
         await writeAuditLog(transaction, {
           actorId: createdUser.id,
@@ -46,7 +55,7 @@ function createAuthService({ prismaClient, jwtSecret, passwordRounds, tokenLifet
           targetType: 'User',
           targetId: createdUser.id,
         });
-        return { ...createdUser, patientProfile };
+        return { ...createdUser, patient };
       });
       return toPublicUser(user);
     } catch (error) {
@@ -61,7 +70,7 @@ function createAuthService({ prismaClient, jwtSecret, passwordRounds, tokenLifet
     const normalizedEmail = email.trim().toLowerCase();
     const user = await prismaClient.user.findUnique({
       where: { email: normalizedEmail },
-      include: { patientProfile: { select: { id: true } } },
+      include: { patient: { select: { id: true } } },
     });
     const passwordHash = user?.passwordHash || await dummyHashPromise;
     const validPassword = await bcrypt.compare(password, passwordHash);

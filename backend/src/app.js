@@ -7,6 +7,7 @@ const { apiPrefix, frontendUrl, nodeEnv } = require('./config/env');
 const healthRoutes = require('./routes/health.routes');
 const createAdminRouter = require('./routes/admin.routes');
 const createAuthRouter = require('./routes/auth.routes');
+const createDoctorRouter = require('./routes/doctor.routes');
 const createPatientRouter = require('./routes/patient.routes');
 const { notFound, errorHandler } = require('./middleware/error-handler');
 
@@ -33,6 +34,7 @@ function createApp({
   app.use(`${prefix}/auth`, createAuthRouter({ prismaClient, jwtSecret, passwordRounds, tokenLifetimeSeconds }));
   app.use(`${prefix}/admin`, createAdminRouter({ prismaClient, jwtSecret }));
   app.use(`${prefix}/patients`, createPatientRouter({ prismaClient, jwtSecret }));
+  app.use(`${prefix}/doctors`, createDoctorRouter({ prismaClient, jwtSecret }));
 
   app.use(notFound);
   app.use(errorHandler);

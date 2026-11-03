@@ -159,7 +159,7 @@ test('patients can view only their own profile; logout revokes the access token'
     .get(`${API}/patients/${patientB.patientProfileId}`)
     .set('Authorization', `Bearer ${token}`);
   assert.equal(ownProfile.status, 200);
-  assert.equal(ownProfile.body.data.patient.email, 'a@example.test');
+  assert.equal(ownProfile.body.data.email, 'a@example.test');
   assert.equal(otherProfile.status, 404);
 
   const logout = await request(app).post(`${API}/auth/logout`).set('Authorization', `Bearer ${token}`);
@@ -193,6 +193,6 @@ test('ADMIN can promote a clinician and grant patient-specific access', async ()
     .get(`${API}/patients/${patient.patientProfileId}`)
     .set('Authorization', `Bearer ${clinicianLogin.body.data.accessToken}`);
   assert.equal(patientRecord.status, 200);
-  assert.equal(patientRecord.body.data.patient.email, 'subject@example.test');
+  assert.equal(patientRecord.body.data.email, 'subject@example.test');
   assert.ok(prismaClient.state.auditLogs.some((entry) => entry.action === 'admin.user_role_changed'));
 });

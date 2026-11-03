@@ -47,7 +47,7 @@ function createAuthMiddleware({ prismaClient = prisma, jwtSecret } = {}) {
           isActive: true,
           createdAt: true,
           updatedAt: true,
-          patientProfile: { select: { id: true } },
+          patient: { select: { id: true } },
         },
       });
       if (!user) throw unauthorized();

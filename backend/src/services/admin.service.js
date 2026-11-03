@@ -1,4 +1,6 @@
 const AppError = require('../utils/app-error');
+const { splitPersonName } = require('../utils/person-name');
+const { createRecordNumber } = require('../utils/record-number');
 const { writeAuditLog } = require('./audit.service');
 const { toPublicUser } = require('./auth.service');
 
@@ -16,7 +18,7 @@ function createAdminService({ prismaClient }) {
         isActive: true,
         createdAt: true,
         updatedAt: true,
-        patientProfile: { select: { id: true } },
+        patient: { select: { id: true } },
       },
     });
     return users.map(toPublicUser);
@@ -31,11 +33,19 @@ function createAdminService({ prismaClient }) {
 
     const updated = await prismaClient.$transaction(async (transaction) => {
       const user = await transaction.user.update({ where: { id: targetId }, data: { role } });
-      let patientProfile = null;
+      let patient = null;
       if (role === 'PATIENT') {
-        patientProfile = await transaction.patientProfile.findUnique({ where: { userId: targetId } });
-        if (!patientProfile) {
-          patientProfile = await transaction.patientProfile.create({ data: { userId: targetId } });
+        patient = await transaction.patient.findUnique({ where: { userId: targetId } });
+        if (!patient) {
+          const name = splitPersonName(user.name);
+          patient = await transaction.patient.create({
+            data: {
+              ...name,
+              userId: targetId,
+              patientNumber: createRecordNumber('PAT'),
+              email: user.email,
+            },
+          });
         }
       }
       await writeAuditLog(transaction, {
@@ -45,7 +55,7 @@ function createAdminService({ prismaClient }) {
         targetId,
         metadata: { fromRole: current.role, toRole: role },
       });
-      return { ...user, patientProfile };
+      return { ...user, patient };
     });
     return toPublicUser(updated);
   }
@@ -58,7 +68,7 @@ function createAdminService({ prismaClient }) {
       const user = await transaction.user.update({
         where: { id: targetId },
         data: { isActive },
-        include: { patientProfile: { select: { id: true } } },
+        include: { patient: { select: { id: true } } },
       });
       await writeAuditLog(transaction, {
         actorId: actor.id,
@@ -74,7 +84,7 @@ function createAdminService({ prismaClient }) {
 
   async function grantPatientAccess({ actor, patientId, userId }) {
     const [patient, user] = await Promise.all([
-      prismaClient.patientProfile.findUnique({ where: { id: patientId }, select: { id: true } }),
+      prismaClient.patient.findUnique({ where: { id: patientId }, select: { id: true } }),
       prismaClient.user.findUnique({ where: { id: userId }, select: { id: true, role: true, isActive: true } }),
     ]);
     if (!patient || !user) throw new AppError(404, 'NOT_FOUND', 'The requested patient or user was not found.');
@@ -91,7 +101,7 @@ function createAdminService({ prismaClient }) {
         await writeAuditLog(transaction, {
           actorId: actor.id,
           action: 'admin.patient_access_granted',
-          targetType: 'PatientProfile',
+          targetType: 'Patient',
           targetId: patientId,
           metadata: { userId },
         });
@@ -113,7 +123,7 @@ function createAdminService({ prismaClient }) {
       await writeAuditLog(transaction, {
         actorId: actor.id,
         action: 'admin.patient_access_revoked',
-        targetType: 'PatientProfile',
+        targetType: 'Patient',
         targetId: access.patientId,
         metadata: { userId: access.userId },
       });

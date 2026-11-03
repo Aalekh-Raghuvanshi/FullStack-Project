@@ -16,6 +16,13 @@ enum UserRole {
   PATIENT
 }
 
+enum DoctorAvailability {
+  AVAILABLE
+  BUSY
+  OFF_DUTY
+  ON_LEAVE
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   email        String   @unique
@@ -26,20 +33,36 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  patientProfile         PatientProfile? @relation("PatientOwner")
+  patient                Patient?        @relation("PatientOwner")
+  doctorProfile          Doctor?         @relation("DoctorAccount")
   patientAccesses        PatientAccess[] @relation("PatientAccessSubject")
   grantedPatientAccesses PatientAccess[] @relation("PatientAccessGrantor")
   revokedTokens          RevokedToken[]
   auditLogs              AuditLog[]
 }
 
-model PatientProfile {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @unique @db.Uuid
-  createdAt DateTime @default(now())
+model Patient {
+  id                    String    @id @default(uuid()) @db.Uuid
+  userId                String?   @unique @db.Uuid
+  patientNumber         String    @unique @db.VarChar(40)
+  firstName             String    @db.VarChar(120)
+  lastName              String?   @db.VarChar(120)
+  dateOfBirth           DateTime? @db.Date
+  gender                String?   @db.VarChar(80)
+  phone                 String?   @db.VarChar(40)
+  email                 String?   @db.VarChar(254)
+  address               String?   @db.VarChar(500)
+  emergencyContactName  String?   @db.VarChar(160)
+  emergencyContactPhone String?   @db.VarChar(40)
+  isActive              Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  user         User            @relation("PatientOwner", fields: [userId], references: [id], onDelete: Cascade)
+  user         User?           @relation("PatientOwner", fields: [userId], references: [id], onDelete: SetNull)
   accessGrants PatientAccess[]
+
+  @@index([lastName, firstName])
+  @@index([email])
 }
 
 model PatientAccess {
@@ -49,12 +72,34 @@ model PatientAccess {
   grantedById String   @db.Uuid
   createdAt   DateTime @default(now())
 
-  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  user      User           @relation("PatientAccessSubject", fields: [userId], references: [id], onDelete: Cascade)
-  grantedBy User           @relation("PatientAccessGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  user      User    @relation("PatientAccessSubject", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User    @relation("PatientAccessGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
 
   @@unique([patientId, userId])
   @@index([userId])
+}
+
+model Doctor {
+  id             String             @id @default(uuid()) @db.Uuid
+  userId         String?            @unique @db.Uuid
+  doctorNumber   String             @unique @db.VarChar(40)
+  firstName      String             @db.VarChar(120)
+  lastName       String             @db.VarChar(120)
+  specialization String             @db.VarChar(160)
+  department     String             @db.VarChar(120)
+  phone          String?            @db.VarChar(40)
+  email          String?            @db.VarChar(254)
+  availability   DoctorAvailability @default(AVAILABLE)
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  user User? @relation("DoctorAccount", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([department])
+  @@index([specialization])
+  @@index([availability, isActive])
 }
 
 model RevokedToken {
