@@ -1,9 +1,17 @@
 const styles = {
   active: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15',
   confirmed: 'bg-blue-50 text-blue-700 ring-blue-600/15',
+  scheduled: 'bg-blue-50 text-blue-700 ring-blue-600/15',
   pending: 'bg-amber-50 text-amber-700 ring-amber-600/15',
+  available: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15',
+  busy: 'bg-amber-50 text-amber-700 ring-amber-600/15',
+  off_duty: 'bg-slate-100 text-slate-600 ring-slate-500/15',
+  on_leave: 'bg-violet-50 text-violet-700 ring-violet-600/15',
+  checked_in: 'bg-cyan-50 text-cyan-700 ring-cyan-600/15',
+  in_progress: 'bg-violet-50 text-violet-700 ring-violet-600/15',
   completed: 'bg-slate-100 text-slate-600 ring-slate-500/15',
   cancelled: 'bg-rose-50 text-rose-700 ring-rose-600/15',
+  no_show: 'bg-rose-50 text-rose-700 ring-rose-600/15',
   critical: 'bg-rose-50 text-rose-700 ring-rose-600/15',
   default: 'bg-slate-100 text-slate-600 ring-slate-500/15',
 };
