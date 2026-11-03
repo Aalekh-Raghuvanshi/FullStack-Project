@@ -1,7 +1,7 @@
 const { randomUUID } = require('node:crypto');
 
-function prismaError(code) {
-  return Object.assign(new Error(code), { code });
+function prismaError(code, meta) {
+  return Object.assign(new Error(code), { code, ...(meta ? { meta } : {}) });
 }
 
 function pickUser(user, select, include, state) {
@@ -34,9 +34,19 @@ function matchFilter(actual, filter) {
         : haystack.includes(needle);
     }
     if (Object.hasOwn(filter, 'equals')) {
-      if (filter.mode === 'insensitive') return String(actual).toLowerCase() === String(filter.equals).toLowerCase();
-      return actual === filter.equals;
+      if (filter.mode === 'insensitive') {
+        if (String(actual).toLowerCase() !== String(filter.equals).toLowerCase()) return false;
+      } else if (actual instanceof Date && filter.equals instanceof Date) {
+        if (actual.getTime() !== filter.equals.getTime()) return false;
+      } else if (actual !== filter.equals) return false;
     }
+    if (Object.hasOwn(filter, 'in') && !filter.in.includes(actual)) return false;
+    if (Object.hasOwn(filter, 'not') && matchFilter(actual, filter.not)) return false;
+    if (Object.hasOwn(filter, 'lt') && !(actual < filter.lt)) return false;
+    if (Object.hasOwn(filter, 'lte') && !(actual <= filter.lte)) return false;
+    if (Object.hasOwn(filter, 'gt') && !(actual > filter.gt)) return false;
+    if (Object.hasOwn(filter, 'gte') && !(actual >= filter.gte)) return false;
+    return true;
   }
   return actual === filter;
 }
@@ -44,13 +54,27 @@ function matchFilter(actual, filter) {
 function matches(record, where, state) {
   if (!where) return true;
   for (const [key, value] of Object.entries(where)) {
+    if (key === 'AND') {
+      if (!value.every((condition) => matches(record, condition, state))) return false;
+      continue;
+    }
     if (key === 'OR') {
       if (!value.some((condition) => matches(record, condition, state))) return false;
+      continue;
+    }
+    if (key === 'NOT') {
+      const conditions = Array.isArray(value) ? value : [value];
+      if (conditions.some((condition) => matches(record, condition, state))) return false;
       continue;
     }
     if (key === 'accessGrants') {
       const requestedUserId = value.some.userId;
       if (![...state.patientAccess.values()].some((grant) => grant.patientId === record.id && grant.userId === requestedUserId)) return false;
+      continue;
+    }
+    if (key === 'patient' || key === 'doctor') {
+      const related = key === 'patient' ? state.patients.get(record.patientId) : state.doctors.get(record.doctorId);
+      if (!related || !matches(related, value, state)) return false;
       continue;
     }
     if (!matchFilter(record[key], value)) return false;
@@ -78,6 +102,7 @@ function createFakePrisma() {
     patients,
     patientProfiles: patients,
     doctors: new Map(),
+    appointments: new Map(),
     patientAccess: new Map(),
     revokedTokens: new Map(),
     auditLogs: [],
@@ -200,6 +225,63 @@ function createFakePrisma() {
         return { ...doctor };
       },
     },
+    appointment: {
+      async create({ data }) {
+        if (!state.patients.has(data.patientId) || !state.doctors.has(data.doctorId) || !state.users.has(data.createdBy)) {
+          throw prismaError('P2003');
+        }
+        const overlaps = [...state.appointments.values()].some((item) => item.status !== 'CANCELLED'
+          && data.status !== 'CANCELLED'
+          && (item.doctorId === data.doctorId || item.patientId === data.patientId)
+          && data.scheduledStart < item.scheduledEnd
+          && item.scheduledStart < data.scheduledEnd);
+        if (overlaps) {
+          throw prismaError('P2004', { database_error: '23P01 Appointment_doctor_schedule_excl or Appointment_patient_schedule_excl' });
+        }
+        const now = new Date();
+        const appointment = {
+          id: randomUUID(),
+          ...data,
+          createdAt: now,
+          updatedAt: data.updatedAt ?? now,
+        };
+        state.appointments.set(appointment.id, appointment);
+        return { ...appointment };
+      },
+      async findUnique({ where }) {
+        const appointment = state.appointments.get(where.id);
+        return appointment ? { ...appointment } : null;
+      },
+      async findFirst({ where, select }) {
+        const appointment = [...state.appointments.values()].find((item) => matches(item, where, state));
+        if (!appointment) return null;
+        return select ? Object.fromEntries(Object.keys(select).map((key) => [key, appointment[key]])) : { ...appointment };
+      },
+      async findMany({ where, skip = 0, take = 50, orderBy }) {
+        return ordered([...state.appointments.values()].filter((item) => matches(item, where, state)), orderBy)
+          .slice(skip, skip + take).map((item) => ({ ...item }));
+      },
+      async count({ where }) {
+        return [...state.appointments.values()].filter((item) => matches(item, where, state)).length;
+      },
+      async updateMany({ where, data }) {
+        const appointments = [...state.appointments.values()].filter((item) => matches(item, where, state));
+        for (const item of appointments) {
+          const proposed = { ...item, ...data };
+          const overlaps = [...state.appointments.values()].some((other) => other.id !== item.id
+            && other.status !== 'CANCELLED'
+            && proposed.status !== 'CANCELLED'
+            && (other.doctorId === proposed.doctorId || other.patientId === proposed.patientId)
+            && proposed.scheduledStart < other.scheduledEnd
+            && other.scheduledStart < proposed.scheduledEnd);
+          if (overlaps) {
+            throw prismaError('P2004', { database_error: '23P01 Appointment_doctor_schedule_excl or Appointment_patient_schedule_excl' });
+          }
+          Object.assign(item, data, { updatedAt: data.updatedAt ?? new Date() });
+        }
+        return { count: appointments.length };
+      },
+    },
     patientAccess: {
       async findUnique({ where }) {
         if (where.patientId_userId) {
@@ -257,6 +339,41 @@ function createFakePrisma() {
     const user = { id: randomUUID(), email, name, role, isActive, passwordHash, createdAt: now, updatedAt: now };
     state.users.set(user.id, user);
     return user;
+  };
+
+  client.seedPatient = async ({ userId = null, isActive = true, firstName = 'Synthetic', lastName = 'Patient' } = {}) => {
+    const now = new Date();
+    const patient = {
+      id: randomUUID(),
+      userId,
+      patientNumber: `PAT-${randomUUID().replaceAll('-', '').toUpperCase()}`,
+      firstName,
+      lastName,
+      isActive,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.patients.set(patient.id, patient);
+    return patient;
+  };
+
+  client.seedDoctor = async ({ userId = null, isActive = true, firstName = 'Synthetic', lastName = 'Doctor' } = {}) => {
+    const now = new Date();
+    const doctor = {
+      id: randomUUID(),
+      userId,
+      doctorNumber: `DOC-${randomUUID().replaceAll('-', '').toUpperCase()}`,
+      firstName,
+      lastName,
+      specialization: 'General Medicine',
+      department: 'Primary Care',
+      availability: 'AVAILABLE',
+      isActive,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.doctors.set(doctor.id, doctor);
+    return doctor;
   };
 
   return client;

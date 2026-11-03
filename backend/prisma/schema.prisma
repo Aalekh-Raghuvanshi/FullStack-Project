@@ -23,6 +23,16 @@ enum DoctorAvailability {
   ON_LEAVE
 }
 
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   email        String   @unique
@@ -35,6 +45,7 @@ model User {
 
   patient                Patient?        @relation("PatientOwner")
   doctorProfile          Doctor?         @relation("DoctorAccount")
+  createdAppointments    Appointment[]   @relation("AppointmentCreator")
   patientAccesses        PatientAccess[] @relation("PatientAccessSubject")
   grantedPatientAccesses PatientAccess[] @relation("PatientAccessGrantor")
   revokedTokens          RevokedToken[]
@@ -60,6 +71,7 @@ model Patient {
 
   user         User?           @relation("PatientOwner", fields: [userId], references: [id], onDelete: SetNull)
   accessGrants PatientAccess[]
+  appointments Appointment[]
 
   @@index([lastName, firstName])
   @@index([email])
@@ -95,11 +107,33 @@ model Doctor {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  user User? @relation("DoctorAccount", fields: [userId], references: [id], onDelete: SetNull)
+  user         User?         @relation("DoctorAccount", fields: [userId], references: [id], onDelete: SetNull)
+  appointments Appointment[]
 
   @@index([department])
   @@index([specialization])
   @@index([availability, isActive])
+}
+
+model Appointment {
+  id             String            @id @default(uuid()) @db.Uuid
+  patientId      String            @db.Uuid
+  doctorId       String            @db.Uuid
+  scheduledStart DateTime          @db.Timestamptz(3)
+  scheduledEnd   DateTime          @db.Timestamptz(3)
+  status         AppointmentStatus @default(SCHEDULED)
+  visitCategory  String            @db.VarChar(120)
+  createdBy      String            @db.Uuid
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctor  Doctor  @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  creator User    @relation("AppointmentCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([patientId, scheduledStart])
+  @@index([doctorId, scheduledStart])
+  @@index([status, scheduledStart])
 }
 
 model RevokedToken {
